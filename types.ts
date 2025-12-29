@@ -1,5 +1,5 @@
 
-export type DataType = 'entier' | 'réel' | 'chaîne de caractères' | 'booléen';
+export type DataType = 'entier' | 'réel' | 'chaîne de caractères' | 'chaine de caractères' | 'caractère' | 'booléen';
 
 export interface Variable {
   name: string;

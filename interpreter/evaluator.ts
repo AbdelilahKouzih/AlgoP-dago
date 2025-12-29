@@ -16,13 +16,7 @@ export const evaluateExpression = (expr: string, variables: Map<string, Variable
   });
 
   // 2. Remplacement des opérateurs arithmétiques spéciaux
-  // DIV (Division entière) : On remplace par une fonction qui vérifie les types
-  // MOD (Modulo) : On remplace par %
-  // / (Division réelle) : On garde /
-  
-  // Utilisation d'une regex pour capturer les opérandes autour de DIV et MOD
-  // pour vérification sémantique (simplifiée ici via eval d'une fonction d'aide)
-  processed = processed.replace(/\bDIV\b/g, '/'); // Sera tronqué plus tard
+  processed = processed.replace(/\bDIV\b/g, '/');
   processed = processed.replace(/\bMOD\b/g, '%');
 
   // 3. Remplacement des mots-clés logiques
@@ -36,7 +30,7 @@ export const evaluateExpression = (expr: string, variables: Map<string, Variable
   processed = processed.replace(/<>/g, '!==');
   processed = processed.replace(/<=/g, '__LE__');
   processed = processed.replace(/>=/g, '__GE__');
-  processed = processed.replace(/=(?!=)/g, '==='); // Transforme = en === (si pas suivi de =)
+  processed = processed.replace(/=(?!=)/g, '==='); 
   processed = processed.replace(/__LE__/g, '<=');
   processed = processed.replace(/__GE__/g, '>=');
 
@@ -48,7 +42,7 @@ export const evaluateExpression = (expr: string, variables: Map<string, Variable
     
     let val = v.value;
     if (val === undefined) {
-      if (v.type === 'chaîne de caractères') val = "";
+      if (v.type === 'chaîne de caractères' || v.type === 'chaine de caractères' || v.type === 'caractère') val = "";
       else if (v.type === 'booléen') val = false;
       else val = 0;
     }
@@ -69,12 +63,9 @@ export const evaluateExpression = (expr: string, variables: Map<string, Variable
     processed = processed.replace(`__LITSTR${i}__`, str);
   });
 
-  // 7. Gestion de la division entière (DIV) après injection
-  // Si l'expression contenait DIV, on doit s'assurer du résultat entier
   const containsDIV = expr.includes('DIV');
 
   try {
-    // Vérification de division par zéro avant eval
     if (/\/\s*0(?!\.)/.test(processed) || /%\s*0(?!\.)/.test(processed)) {
       throw new Error("Division ou Modulo par zéro impossible.");
     }
@@ -82,7 +73,6 @@ export const evaluateExpression = (expr: string, variables: Map<string, Variable
     // eslint-disable-next-line no-eval
     let result = eval(processed);
 
-    // Si c'était un DIV, on tronque (Math.trunc pour gérer les négatifs correctement)
     if (containsDIV && typeof result === 'number') {
       result = Math.trunc(result);
     }
@@ -90,8 +80,7 @@ export const evaluateExpression = (expr: string, variables: Map<string, Variable
     return result;
   } catch (e: any) {
     if (e.message.includes("zéro")) throw e;
-    console.error("Échec éval:", processed, e);
-    throw new Error(`Expression incorrecte. Vérifiez les opérateurs ou les types.`);
+    throw new Error(`Expression incorrecte. Vérifiez les types ou l'écriture.`);
   }
 };
 
@@ -115,7 +104,11 @@ export const castValue = (value: string, type: DataType): any => {
       if (lower === 'vrai' || lower === 'true') return true;
       if (lower === 'faux' || lower === 'false') return false;
       throw new Error(`La valeur doit être 'vrai' ou 'faux'.`);
+    case 'caractère':
+      if (v.length !== 1) throw new Error(`Un caractère doit être une seule lettre ou symbole.`);
+      return v;
     case 'chaîne de caractères':
+    case 'chaine de caractères':
     default:
       return v;
   }

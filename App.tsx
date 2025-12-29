@@ -8,28 +8,30 @@ import { parseCode, parseAllDeclarations, validateSyntax } from './interpreter/p
 import { evaluateExpression, castValue } from './interpreter/evaluator';
 import { Instruction, ProgramState, ConsoleMessage, Variable, DataType } from './types';
 
-const INITIAL_CODE = `Algorithme Demo_Exécution ;
+const INITIAL_CODE = `Algorithme Demo_Scolaire
 Constantes
-   PI = 3.14 ;
-   APP_NAME = "AlgoPédago" ;
+   TVA = 20 ;
+   MESSAGE = "Calcul en cours..." ;
 
 Variables
-   Age : entier ;
-   Status : chaîne de caractères ;
+   PrixHT : réel ;
+   EstValide : booléen ;
+   Initiale : caractère ;
 
 Début
-   Ecrire("Bienvenue sur ", APP_NAME)
-   Ecrire("Quel est votre âge ?")
-   Lire(Age)
+   Ecrire(MESSAGE) ;
+   Ecrire("Entrez le prix HT :") ;
+   Lire(PrixHT) ;
    
-   Si Age >= 18 Alors
-      Status <- "Majeur"
+   Si PrixHT > 0 Alors
+      EstValide <- vrai ;
+      Ecrire("Prix valide.") ;
    Sinon
-      Status <- "Mineur"
+      EstValide <- faux ;
+      Ecrire("Prix invalide.") ;
    Fin si
    
-   Ecrire("Vous êtes : ", Status)
-   Ecrire("Fin du programme.")
+   Ecrire("Fin du programme.") ;
 Fin`;
 
 const App: React.FC = () => {
@@ -80,7 +82,7 @@ const App: React.FC = () => {
         console: [
           { text: "🚨 ANALYSE SYNTAXIQUE : ÉCHEC", type: 'error', timestamp: new Date() },
           { text: syntaxErrorMessage, type: 'error', timestamp: new Date() },
-          { text: "Conseil : Vérifiez les mots-clés, les types et n'oubliez pas les ';' !", type: 'system', timestamp: new Date() }
+          { text: "Rappel : Chaque instruction doit finir par ';' sauf les mots-clés de structure.", type: 'system', timestamp: new Date() }
         ]
       }));
       return false;
@@ -90,18 +92,15 @@ const App: React.FC = () => {
       const parsedInstructions = parseCode(code);
       const allDeclarations = parseAllDeclarations(code);
       
-      // Initialisation des valeurs par défaut pour les variables
       allDeclarations.forEach((v, name) => {
         if (!v.isConstant) {
             let defaultValue: any = undefined;
             const t = v.type.toLowerCase();
             if (t.includes('entier') || t.includes('réel')) defaultValue = 0;
-            else if (t.includes('chaîne') || t.includes('chaine')) defaultValue = "";
+            else if (t.includes('chaîne') || t.includes('chaine') || t.includes('caractère')) defaultValue = "";
             else if (t.includes('booléen')) defaultValue = false;
             v.value = defaultValue;
         } else {
-            // Pour les constantes, on évalue la valeur littérale
-            // Si c'est entre guillemets, on enlève les guillemets
             if (typeof v.value === 'string') {
                 const s = v.value.trim();
                 if (s.startsWith('"') && s.endsWith('"')) v.value = s.slice(1, -1);
@@ -117,7 +116,7 @@ const App: React.FC = () => {
       setInstructions(parsedInstructions);
       setState({
         variables: allDeclarations,
-        console: [{ text: "Analyse terminée avec succès. Lancement de la machine...", type: 'system', timestamp: new Date() }],
+        console: [{ text: "Analyse terminée avec succès. Lancement...", type: 'system', timestamp: new Date() }],
         currentLine: parsedInstructions[0].lineNumber,
         instructionIndex: 0,
         isRunning: true,
@@ -196,12 +195,11 @@ const App: React.FC = () => {
               const conditionResult = !!evaluateExpression(match[1], prev.variables);
               if (!conditionResult) {
                 let depth = 1;
-                let found = false;
                 for (let j = prev.instructionIndex + 1; j < instructions.length; j++) {
                   if (instructions[j].type === 'SI') depth++;
                   if (instructions[j].type === 'FIN_SI') depth--;
-                  if (depth === 1 && instructions[j].type === 'SINON') { nextIndex = j + 1; found = true; break; }
-                  if (depth === 0) { nextIndex = j + 1; found = true; break; }
+                  if (depth === 1 && instructions[j].type === 'SINON') { nextIndex = j + 1; break; }
+                  if (depth === 0) { nextIndex = j + 1; break; }
                 }
               }
             }
@@ -288,10 +286,10 @@ const App: React.FC = () => {
             <Code2 className="text-white w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">AlgoPédago - Tronc Commun</h1>
+            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">AlgoPédago - Maroc</h1>
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Vérification Avancée Active</span>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Maroc v1.7</span>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Analyseur Scolaire</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Tronc Commun v2.0</span>
             </div>
           </div>
         </div>
@@ -323,7 +321,7 @@ const App: React.FC = () => {
           <div className="flex items-center justify-between px-1">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <TerminalIcon className="w-3 h-3" />
-                Editeur (Syntaxe Globale)
+                Editeur (Respect strict du ';')
             </div>
           </div>
           <CodeEditor value={code} onChange={setCode} currentLine={state.currentLine} />
@@ -336,7 +334,7 @@ const App: React.FC = () => {
               <div className="absolute inset-x-4 bottom-4 p-5 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-300 z-30">
                 <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <h3 className="text-white text-xs font-bold uppercase tracking-tighter">Saisie pour : <span className="text-indigo-400 font-mono">{state.inputTarget}</span></h3>
+                    <h3 className="text-white text-xs font-bold uppercase tracking-tighter">Attente de saisie : <span className="text-indigo-400 font-mono">{state.inputTarget}</span></h3>
                 </div>
                 <form onSubmit={handleInputSubmit} className="flex gap-2">
                   <input autoFocus type="text" value={promptValue} onChange={(e) => setPromptValue(e.target.value)} className="flex-1 bg-slate-800 border border-slate-600 text-emerald-400 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 font-mono" placeholder="Entrez la valeur..." />
@@ -356,14 +354,14 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${state.isRunning ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-300'}`}></div>
             <span className={state.isRunning ? 'text-emerald-600' : 'text-slate-400'}>
-              {state.isRunning ? 'Exécution en cours' : 'Analyseur prêt'}
+              {state.isRunning ? 'En exécution' : 'Prêt'}
             </span>
           </div>
           {state.currentLine > 0 && <div className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">Ligne active : {state.currentLine}</div>}
         </div>
-        <div className="flex items-center gap-2 italic">
+        <div className="flex items-center gap-2">
           <AlertCircle className="w-3 h-3 text-indigo-400" />
-          Conforme au programme scolaire marocain (Module 3)
+          Conforme Module 3 - Tron Commun
         </div>
       </footer>
     </div>
