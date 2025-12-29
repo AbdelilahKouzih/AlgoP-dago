@@ -1,0 +1,5 @@
+{
+  "name": "Copy of AlgoPédago - Tronc Commun Maroc",
+  "description": "Un environnement interactif d'apprentissage de l'algorithmique conçu pour les élèves du tronc commun au Maroc. Permet de saisir, tester et visualiser l'exécution du pseudo-code académique.",
+  "requestFramePermissions": []
+}
