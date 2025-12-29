@@ -31,6 +31,14 @@ export interface ConsoleMessage {
   timestamp: Date;
 }
 
+export interface QualityScore {
+  syntax: 'correct' | 'minor' | 'incorrect';
+  logic: 'correct' | 'partial' | 'incorrect';
+  readability: 'very_readable' | 'readable' | 'poor';
+  score: number;
+  feedback: string[];
+}
+
 export interface ProgramState {
   variables: Map<string, Variable>;
   console: ConsoleMessage[];
@@ -40,4 +48,5 @@ export interface ProgramState {
   isPausedForInput: boolean;
   inputTarget: string | null;
   inputBuffer: string[];
+  evaluation: QualityScore | null;
 }

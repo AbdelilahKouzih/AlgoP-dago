@@ -1,11 +1,13 @@
+
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Play, RotateCcw, HelpCircle, Code2, AlertCircle, StepForward, Terminal as TerminalIcon } from 'lucide-react';
 import CodeEditor from './components/CodeEditor';
 import Terminal from './components/Terminal';
 import VariableWatcher from './components/VariableWatcher';
+import QualityScorePanel from './components/QualityScorePanel';
 import { parseCode, parseAllDeclarations, validateSyntax } from './interpreter/parser';
 import { evaluateExpression, castValue } from './interpreter/evaluator';
-import { Instruction, ProgramState, ConsoleMessage, Variable, DataType } from './types';
+import { Instruction, ProgramState, ConsoleMessage, Variable, DataType, QualityScore } from './types';
 
 const INITIAL_CODE = `Algorithme Demo_Scolaire
 Constantes
@@ -43,7 +45,8 @@ const App: React.FC = () => {
     isRunning: false,
     isPausedForInput: false,
     inputTarget: null,
-    inputBuffer: []
+    inputBuffer: [],
+    evaluation: null
   });
 
   const [promptValue, setPromptValue] = useState('');
@@ -57,6 +60,73 @@ const App: React.FC = () => {
     }));
   };
 
+  const calculateQualityScore = useCallback((finalState: ProgramState): QualityScore => {
+    const feedback: string[] = [];
+    let syntax: QualityScore['syntax'] = 'correct';
+    let logic: QualityScore['logic'] = 'correct';
+    let readability: QualityScore['readability'] = 'very_readable';
+    let baseScore = 0;
+
+    // 1. Syntax Score (0-3)
+    const syntaxError = validateSyntax(code);
+    if (!syntaxError) {
+      baseScore += 3;
+      syntax = 'correct';
+      feedback.push("✅ Ta syntaxe est impeccable, bravo !");
+    } else {
+      syntax = 'incorrect';
+      feedback.push("❌ Il reste des erreurs de syntaxe à corriger.");
+    }
+
+    // 2. Logic Score (0-4)
+    const runtimeErrors = finalState.console.filter(m => m.type === 'error').length;
+    if (runtimeErrors === 0) {
+      baseScore += 4;
+      logic = 'correct';
+      feedback.push("✅ Ton algorithme s'est exécuté sans aucune erreur logique.");
+    } else {
+      logic = 'incorrect';
+      baseScore += 1;
+      feedback.push("⚠️ Attention aux erreurs pendant l'exécution.");
+    }
+
+    // 3. Readability Score (0-3)
+    let readPoints = 0;
+    const lines = code.split('\n');
+    
+    // Check indentation
+    let hasIndentation = false;
+    let inSiBlock = false;
+    for (const line of lines) {
+      const trimmed = line.trim().toLowerCase();
+      if (trimmed.startsWith('si ')) inSiBlock = true;
+      else if (trimmed.startsWith('fin si') || trimmed === 'finsi') inSiBlock = false;
+      else if (inSiBlock && line.startsWith('   ')) hasIndentation = true;
+    }
+    if (hasIndentation) readPoints += 1.5;
+    else feedback.push("💡 Astuce : Utilise des espaces (indentation) pour décaler les blocs SI.");
+
+    // Check variable naming
+    const varNames = Array.from(finalState.variables.keys());
+    const avgLen = varNames.reduce((acc, name) => acc + name.length, 0) / (varNames.length || 1);
+    if (avgLen > 3) readPoints += 1.5;
+    else feedback.push("💡 Astuce : Choisis des noms de variables plus explicites (ex: 'PrixHT' au lieu de 'A').");
+
+    if (readPoints >= 3) readability = 'very_readable';
+    else if (readPoints >= 1.5) readability = 'readable';
+    else readability = 'poor';
+
+    baseScore += readPoints;
+
+    return {
+      syntax,
+      logic,
+      readability,
+      score: Math.round(baseScore),
+      feedback: feedback.length > 0 ? feedback : ["Beau travail global !"]
+    };
+  }, [code]);
+
   const resetProgram = () => {
     isAutoStepRef.current = false;
     setState({
@@ -67,7 +137,8 @@ const App: React.FC = () => {
       isRunning: false,
       isPausedForInput: false,
       inputTarget: null,
-      inputBuffer: []
+      inputBuffer: [],
+      evaluation: null
     });
   };
 
@@ -79,9 +150,9 @@ const App: React.FC = () => {
       setState(prev => ({
         ...prev,
         console: [
-          { text: "🚨 ANALYSE SYNTAXIQUE : ÉCHEC", type: 'error', timestamp: new Date() },
-          { text: syntaxErrorMessage, type: 'error', timestamp: new Date() },
-          { text: "Rappel : Chaque instruction doit finir par ';' sauf les mots-clés de structure.", type: 'system', timestamp: new Date() }
+          { text: "🚨 ANALYSE SYNTAXIQUE : ÉCHEC", type: 'error' as const, timestamp: new Date() },
+          { text: syntaxErrorMessage, type: 'error' as const, timestamp: new Date() },
+          { text: "Rappel : Chaque instruction doit finir par ';' sauf les mots-clés de structure.", type: 'system' as const, timestamp: new Date() }
         ]
       }));
       return false;
@@ -115,13 +186,14 @@ const App: React.FC = () => {
       setInstructions(parsedInstructions);
       setState({
         variables: allDeclarations,
-        console: [{ text: "Analyse terminée avec succès. Lancement...", type: 'system', timestamp: new Date() }],
+        console: [{ text: "Analyse terminée avec succès. Lancement...", type: 'system' as const, timestamp: new Date() }],
         currentLine: parsedInstructions[0].lineNumber,
         instructionIndex: 0,
         isRunning: true,
         isPausedForInput: false,
         inputTarget: null,
-        inputBuffer: []
+        inputBuffer: [],
+        evaluation: null
       });
       return true;
     } catch (e: any) {
@@ -134,7 +206,8 @@ const App: React.FC = () => {
     setState(prev => {
       if (!prev.isRunning || prev.isPausedForInput || prev.instructionIndex >= instructions.length) {
         if (prev.instructionIndex >= instructions.length && prev.isRunning) {
-            return { ...prev, isRunning: false, currentLine: 0 };
+            const finalState: ProgramState = { ...prev, isRunning: false, currentLine: 0 };
+            return { ...finalState, evaluation: calculateQualityScore(finalState) };
         }
         return prev;
       }
@@ -142,10 +215,10 @@ const App: React.FC = () => {
       const instr = instructions[prev.instructionIndex];
       let nextIndex = prev.instructionIndex + 1;
       let nextIsPaused = false;
-      let nextInputTarget = null;
+      let nextInputTarget: string | null = null;
       let nextInputBuffer = [...prev.inputBuffer];
       const newVars = new Map(prev.variables);
-      const newConsole = [...prev.console];
+      const newConsole: ConsoleMessage[] = [...prev.console];
 
       try {
         switch (instr.type) {
@@ -155,12 +228,11 @@ const App: React.FC = () => {
               const content = match[1];
               const parts = content.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
               const output = parts.map(part => {
-                // Fixed: Removed incorrect 'part.part' access. part is a string.
                 const partTrimmed = part.trim();
                 if (partTrimmed.startsWith('"') && partTrimmed.endsWith('"')) return partTrimmed.slice(1, -1);
                 return String(evaluateExpression(partTrimmed, prev.variables));
               }).join('');
-              newConsole.push({ text: output, type: 'output', timestamp: new Date() });
+              newConsole.push({ text: output, type: 'output' as const, timestamp: new Date() });
             }
             break;
           }
@@ -217,15 +289,18 @@ const App: React.FC = () => {
           }
         }
       } catch (e: any) {
-        newConsole.push({ text: `ERREUR : Ligne ${instr.lineNumber} - ${e.message}`, type: 'error', timestamp: new Date() });
-        return { ...prev, console: newConsole, isRunning: false };
+        newConsole.push({ text: `ERREUR : Ligne ${instr.lineNumber} - ${e.message}`, type: 'error' as const, timestamp: new Date() });
+        const errorState: ProgramState = { ...prev, console: newConsole, isRunning: false };
+        return { ...errorState, evaluation: calculateQualityScore(errorState) };
       }
 
+      let isFinished = false;
       if (nextIndex >= instructions.length && !nextIsPaused) {
-          newConsole.push({ text: "Algorithme terminé avec succès.", type: 'system', timestamp: new Date() });
+          newConsole.push({ text: "Algorithme terminé avec succès.", type: 'system' as const, timestamp: new Date() });
+          isFinished = true;
       }
 
-      return {
+      const nextState: ProgramState = {
         ...prev,
         variables: newVars,
         console: newConsole,
@@ -236,8 +311,14 @@ const App: React.FC = () => {
         inputTarget: nextInputTarget,
         inputBuffer: nextInputBuffer
       };
+
+      if (isFinished) {
+        return { ...nextState, evaluation: calculateQualityScore(nextState) };
+      }
+
+      return nextState;
     });
-  }, [instructions]);
+  }, [instructions, calculateQualityScore]);
 
   useEffect(() => {
     let timer: number;
@@ -258,19 +339,39 @@ const App: React.FC = () => {
       setState(prev => {
         const newVars = new Map(prev.variables);
         newVars.set(state.inputTarget!, { ...targetVar, value: casted });
-        const nextTarget = prev.inputBuffer[0];
+        const nextTarget = prev.inputBuffer[0] || null;
         const nextBuffer = prev.inputBuffer.slice(1);
         
-        return {
+        const isActuallyFinished = !nextTarget && (prev.instructionIndex + 1 >= instructions.length);
+
+        const newConsole: ConsoleMessage[] = [
+          ...prev.console, 
+          { text: promptValue, type: 'input' as const, timestamp: new Date() }
+        ];
+
+        const nextState: ProgramState = {
           ...prev,
           variables: newVars,
-          console: [...prev.console, { text: promptValue, type: 'input', timestamp: new Date() }],
-          inputTarget: nextTarget || null,
+          console: newConsole,
+          inputTarget: nextTarget,
           inputBuffer: nextBuffer,
           isPausedForInput: !!nextTarget,
           instructionIndex: nextTarget ? prev.instructionIndex : prev.instructionIndex + 1,
-          currentLine: (nextTarget ? prev.currentLine : (prev.instructionIndex + 1 < instructions.length ? instructions[prev.instructionIndex + 1].lineNumber : 0))
+          currentLine: (nextTarget ? prev.currentLine : (prev.instructionIndex + 1 < instructions.length ? instructions[prev.instructionIndex + 1].lineNumber : 0)),
+          isRunning: !isActuallyFinished || !!nextTarget,
+          evaluation: prev.evaluation
         };
+
+        if (isActuallyFinished && !nextTarget) {
+          const finalConsole: ConsoleMessage[] = [
+            ...newConsole,
+            { text: "Algorithme terminé avec succès.", type: 'system' as const, timestamp: new Date() }
+          ];
+          const finalState: ProgramState = { ...nextState, console: finalConsole, isRunning: false, currentLine: 0 };
+          return { ...finalState, evaluation: calculateQualityScore(finalState) };
+        }
+
+        return nextState;
       });
       setPromptValue('');
     } catch (e: any) {
@@ -316,7 +417,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-1 overflow-hidden flex flex-col lg:flex-row p-4 gap-4">
+      <main className="flex-1 overflow-hidden flex flex-col lg:flex-row p-4 gap-4 relative">
         <section className="flex-[3] flex flex-col gap-2 min-h-0">
           <div className="flex items-center justify-between px-1">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
@@ -330,6 +431,12 @@ const App: React.FC = () => {
         <section className="flex-[2] flex flex-col gap-4 min-h-0">
           <div className="flex-[3] flex flex-col min-h-0 relative">
             <Terminal messages={state.console} />
+            {state.evaluation && (
+              <QualityScorePanel 
+                evaluation={state.evaluation} 
+                onClose={() => setState(prev => ({ ...prev, evaluation: null }))} 
+              />
+            )}
             {state.isPausedForInput && (
               <div className="absolute inset-x-4 bottom-4 p-5 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-300 z-30">
                 <div className="flex items-center gap-2 mb-3">
