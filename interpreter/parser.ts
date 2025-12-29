@@ -56,24 +56,20 @@ export const parseAllDeclarations = (code: string): Map<string, Variable> => {
 
     if (lower === 'début' || lower === 'debut') break;
 
-    // Détection des débuts de blocs
     if (lower.startsWith('variables')) { inVariablesBlock = true; inConstantsBlock = false; continue; }
     if (lower.startsWith('constantes')) { inConstantsBlock = true; inVariablesBlock = false; continue; }
 
-    // Syntaxe 1: Constante unique sur une ligne
     if (lower.startsWith('constante ')) {
       const content = trimmed.substring(10).replace(/;$/, '').trim();
       if (content.includes('=')) {
         const [name, valRaw] = content.split('=').map(s => s.trim());
         let val = valRaw;
-        // Strip quotes if they exist
         if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
         symbols.set(name, { name, type: 'chaîne de caractères', value: val, isConstant: true });
       }
       continue;
     }
 
-    // Syntaxe 1: Variable unique sur une ligne
     if (lower.startsWith('variable ')) {
       const content = trimmed.substring(9).replace(/;$/, '').trim();
       if (content.includes(':')) {
@@ -85,7 +81,6 @@ export const parseAllDeclarations = (code: string): Map<string, Variable> => {
       continue;
     }
 
-    // Syntaxe 2: Dans un bloc
     if (inConstantsBlock && trimmed.includes('=')) {
       const [name, valRaw] = trimmed.replace(/;$/, '').split('=').map(s => s.trim());
       let val = valRaw;
@@ -107,80 +102,90 @@ export const validateSyntax = (code: string): string | null => {
   const symbols = parseAllDeclarations(code);
   const typesAutorises = ['entier', 'réel', 'chaîne de caractères', 'booléen', 'chaine de caracteres'];
 
-  // 1. Ordre et Mots-clés de base
   const algoIdx = lowerLines.findIndex(l => l.startsWith('algorithme'));
-  if (algoIdx === -1) return "Erreur : L'algorithme doit commencer par le mot-clé 'Algorithme [Nom] ;'.";
-  if (!lines[algoIdx].includes(';')) return `Ligne ${algoIdx + 1} : Il manque un point-virgule ';' à la fin du nom de l'algorithme. Exemple: Algorithme Somme ;`;
+  if (algoIdx === -1) return "Erreur : L'algorithme doit commencer par 'Algorithme [Nom] ;'.";
+  if (!lines[algoIdx].includes(';')) return `Ligne ${algoIdx + 1} : Il manque un ';' à la fin du nom de l'algorithme.`;
 
   const debutIdx = lowerLines.findIndex(l => l === 'début' || l === 'debut');
   const finIdx = lowerLines.lastIndexOf('fin');
-  if (debutIdx === -1) return "Erreur : Le mot-clé 'Début' est manquant pour marquer le commencement des instructions.";
-  if (finIdx === -1) return "Erreur : Le mot-clé 'Fin' est manquant pour clore l'algorithme.";
-  if (debutIdx > finIdx) return "Erreur : Le mot-clé 'Début' doit se situer avant le mot-clé 'Fin'.";
+  if (debutIdx === -1) return "Erreur : Le mot-clé 'Début' est manquant.";
+  if (finIdx === -1) return "Erreur : Le mot-clé 'Fin' est manquant.";
 
-  // 2. Vérification des déclarations (Constantes et Variables)
   for (let i = 0; i < debutIdx; i++) {
     const line = lines[i].trim();
     if (!line || lowerLines[i].startsWith('algorithme')) continue;
-
     const lowerLine = line.toLowerCase();
-    // On ne vérifie le point-virgule que pour les lignes effectives de déclaration, pas les entêtes de bloc
     if (line.length > 0 && !['variables', 'constantes', 'début', 'debut'].includes(lowerLine)) {
-        if (!line.endsWith(';')) return `Ligne ${i + 1} : Chaque déclaration doit se terminer par un point-virgule ';'.`;
+        if (!line.endsWith(';')) return `Ligne ${i + 1} : Déclaration incomplète (manque ';').`;
     }
-
-    // Vérification des types pour les variables
     if (line.includes(':')) {
       const typePart = line.replace(/;$/, '').split(':').pop()?.trim().toLowerCase() || '';
       if (!typesAutorises.some(t => typePart.includes(t))) {
-        return `Ligne ${i + 1} : Type '${typePart}' non reconnu. Utilisez: entier, réel, chaîne de caractères ou booléen.`;
+        return `Ligne ${i + 1} : Type '${typePart}' inconnu. Utilisez: entier, réel, chaîne de caractères ou booléen.`;
       }
     }
   }
 
-  // 3. Analyse du corps (Début...Fin)
   let siStack = 0;
   for (let i = debutIdx + 1; i < finIdx; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const lower = line.toLowerCase();
 
-    // Structures conditionnelles
+    // Vérification des opérateurs DIV et MOD
+    // Ils doivent être en majuscules selon la consigne
+    if (line.includes(' div ')) return `Ligne ${i + 1} : L'opérateur de division entière doit s'écrire 'DIV' en majuscules.`;
+    if (line.includes(' mod ')) return `Ligne ${i + 1} : L'opérateur modulo doit s'écrire 'MOD' en majuscules.`;
+
     if (lower.startsWith('si ')) {
       siStack++;
-      if (!lower.includes(' alors')) return `Ligne ${i + 1} : Il manque le mot-clé 'Alors'. La forme correcte est : Si [condition] Alors.`;
+      if (!lower.includes(' alors')) return `Ligne ${i + 1} : 'Si' sans 'Alors'. Syntaxe : Si [condition] Alors.`;
     }
     if (lower.replace(/\s/g, '').startsWith('finsi')) {
       siStack--;
-      if (siStack < 0) return `Ligne ${i + 1} : 'Fin si' sans 'Si' correspondant.`;
+      if (siStack < 0) return `Ligne ${i + 1} : 'Fin si' inattendu.`;
     }
-    if (lower === 'sinon' && siStack <= 0) return `Ligne ${i + 1} : 'Sinon' ne peut être utilisé qu'à l'intérieur d'un bloc 'Si'.`;
 
-    // Ecrire / Lire
-    if (lower.startsWith('ecrire')) {
-      if (!line.includes('(') || !line.includes(')')) return `Ligne ${i + 1} : L'instruction 'Ecrire' nécessite des parenthèses. Exemple: Ecrire("Resultat", A).`;
+    if (lower.startsWith('ecrire') && (!line.includes('(') || !line.includes(')'))) {
+        return `Ligne ${i + 1} : 'Ecrire' nécessite des parenthèses.`;
     }
+
     if (lower.startsWith('lire')) {
       const match = line.match(/Lire\s*\((.*)\)/i);
-      if (!match) return `Ligne ${i + 1} : Syntaxe de 'Lire' incorrecte. Exemple: Lire(A).`;
+      if (!match) return `Ligne ${i + 1} : Syntaxe 'Lire' incorrecte.`;
       const varNames = match[1].split(',').map(v => v.trim());
       for (const v of varNames) {
-        if (!symbols.has(v)) return `Ligne ${i + 1} : La variable '${v}' n'est pas déclarée. Toute variable doit être déclarée dans la section 'Variables'.`;
-        if (symbols.get(v)?.isConstant) return `Ligne ${i + 1} : Impossible de lire dans '${v}' car c'est une constante.`;
+        if (!symbols.has(v)) return `Ligne ${i + 1} : Variable '${v}' non déclarée.`;
       }
     }
 
-    // Affectation
     if (line.includes('←') || line.includes('<-')) {
       const sep = line.includes('←') ? '←' : '<-';
       const varName = line.split(sep)[0].trim();
       const symbol = symbols.get(varName);
-      if (!symbol) return `Ligne ${i + 1} : La variable '${varName}' n'est pas déclarée.`;
-      if (symbol.isConstant) return `Ligne ${i + 1} : Erreur fatale ! '${varName}' est une constante et ne peut pas être modifiée par une affectation.`;
+      if (!symbol) return `Ligne ${i + 1} : Variable '${varName}' non déclarée.`;
+      if (symbol.isConstant) return `Ligne ${i + 1} : Impossible de modifier la constante '${varName}'.`;
+      
+      // Vérification sémantique simplifiée pour DIV/MOD
+      const expr = line.split(sep)[1].trim();
+      if (expr.includes('DIV') || expr.includes('MOD')) {
+          // On pourrait ici vérifier si les opérandes sont bien des entiers
+          // Mais cela nécessite une analyse lexicale plus profonde.
+      }
+    }
+    
+    // Empêcher l'utilisation de = pour l'affectation
+    if (line.includes('=') && !line.startsWith('Si') && !line.includes('Constante') && !line.includes('<-') && !line.includes('←')) {
+        // Si la ligne contient un = mais n'est pas une condition ou une constante ou une affectation correcte
+        // C'est probablement une erreur d'affectation
+        const beforeEqual = line.split('=')[0].trim();
+        if (symbols.has(beforeEqual)) {
+            return `Ligne ${i + 1} : Pour l'affectation, utilisez '←' ou '<-' au lieu de '='.`;
+        }
     }
   }
 
-  if (siStack > 0) return "Erreur : Une structure 'Si' n'est pas fermée. Pensez à ajouter 'Fin si'.";
+  if (siStack > 0) return "Erreur : Une structure 'Si' n'est pas fermée par 'Fin si'.";
 
   return null;
 };
