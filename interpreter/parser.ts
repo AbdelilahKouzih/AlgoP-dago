@@ -1,5 +1,5 @@
 
-import { Instruction, InstructionType } from '../types';
+import { Instruction, InstructionType, Variable, DataType } from '../types';
 
 export const parseCode = (code: string): Instruction[] => {
   const lines = code.split('\n');
@@ -9,15 +9,10 @@ export const parseCode = (code: string): Instruction[] => {
   lines.forEach((line, index) => {
     const trimmed = line.trim();
     if (!trimmed) return;
-    
     const lower = trimmed.toLowerCase();
     
-    // On repère le début et la fin pour l'exécution
-    if (lower === 'début' || lower === 'debut') {
-      inProgram = true;
-    }
+    if (lower === 'début' || lower === 'debut') inProgram = true;
     
-    // Détection du type pour l'exécution
     let type: InstructionType | null = null;
     if (lower === 'début' || lower === 'debut') type = 'DEBUT';
     else if (lower === 'fin') { type = 'FIN'; inProgram = false; }
@@ -28,132 +23,164 @@ export const parseCode = (code: string): Instruction[] => {
     else if (lower.startsWith('lire')) type = 'LIRE';
     else if (trimmed.includes('←') || trimmed.includes('<-')) type = 'AFFECTATION';
 
-    if (type && (inProgram || type === 'DEBUT' || type === 'FIN')) {
+    if (type && inProgram) {
       instructions.push({
         type,
         content: trimmed,
         lineNumber: index + 1,
         raw: line
       });
+    } else if (type === 'DEBUT' || type === 'FIN') {
+        instructions.push({
+            type,
+            content: trimmed,
+            lineNumber: index + 1,
+            raw: line
+          });
     }
   });
 
   return instructions;
 };
 
-export const parseVariables = (code: string): Map<string, { type: string }> => {
-  const vars = new Map<string, { type: string }>();
+export const parseAllDeclarations = (code: string): Map<string, Variable> => {
+  const symbols = new Map<string, Variable>();
   const lines = code.split('\n');
   let inVariablesBlock = false;
+  let inConstantsBlock = false;
 
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    
     const lower = trimmed.toLowerCase();
-    if (lower.startsWith('variables')) {
-      inVariablesBlock = true;
-      continue;
-    }
+
     if (lower === 'début' || lower === 'debut') break;
 
-    if (inVariablesBlock && trimmed.includes(':')) {
-      const parts = trimmed.split(':');
-      const type = parts[parts.length - 1].trim().toLowerCase();
-      const namesPart = parts.slice(0, -1).join(':');
-      const names = namesPart.split(',').map(n => n.trim());
-      names.forEach(name => {
-        if (name) vars.set(name, { type });
-      });
+    // Détection des débuts de blocs
+    if (lower.startsWith('variables')) { inVariablesBlock = true; inConstantsBlock = false; continue; }
+    if (lower.startsWith('constantes')) { inConstantsBlock = true; inVariablesBlock = false; continue; }
+
+    // Syntaxe 1: Constante unique sur une ligne
+    if (lower.startsWith('constante ')) {
+      const content = trimmed.substring(10).replace(/;$/, '').trim();
+      if (content.includes('=')) {
+        const [name, valRaw] = content.split('=').map(s => s.trim());
+        let val = valRaw;
+        // Strip quotes if they exist
+        if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+        symbols.set(name, { name, type: 'chaîne de caractères', value: val, isConstant: true });
+      }
+      continue;
+    }
+
+    // Syntaxe 1: Variable unique sur une ligne
+    if (lower.startsWith('variable ')) {
+      const content = trimmed.substring(9).replace(/;$/, '').trim();
+      if (content.includes(':')) {
+        const parts = content.split(':');
+        const type = parts.pop()?.trim() as DataType;
+        const names = parts.join(':').split(',').map(n => n.trim());
+        names.forEach(n => symbols.set(n, { name: n, type, value: undefined, isConstant: false }));
+      }
+      continue;
+    }
+
+    // Syntaxe 2: Dans un bloc
+    if (inConstantsBlock && trimmed.includes('=')) {
+      const [name, valRaw] = trimmed.replace(/;$/, '').split('=').map(s => s.trim());
+      let val = valRaw;
+      if (val.startsWith('"') && val.endsWith('"')) val = val.slice(1, -1);
+      symbols.set(name, { name, type: 'chaîne de caractères', value: val, isConstant: true });
+    } else if (inVariablesBlock && trimmed.includes(':')) {
+      const parts = trimmed.replace(/;$/, '').split(':');
+      const type = parts.pop()?.trim() as DataType;
+      const names = parts.join(':').split(',').map(n => n.trim());
+      names.forEach(n => symbols.set(n, { name: n, type, value: undefined, isConstant: false }));
     }
   }
-  return vars;
+  return symbols;
 };
 
 export const validateSyntax = (code: string): string | null => {
   const lines = code.split('\n');
   const lowerLines = lines.map(l => l.trim().toLowerCase());
-  const declaredVars = parseVariables(code);
+  const symbols = parseAllDeclarations(code);
   const typesAutorises = ['entier', 'réel', 'chaîne de caractères', 'booléen', 'chaine de caracteres'];
 
-  // 1. Vérification de l'ordre global des blocs
+  // 1. Ordre et Mots-clés de base
   const algoIdx = lowerLines.findIndex(l => l.startsWith('algorithme'));
-  const varIdx = lowerLines.findIndex(l => l.startsWith('variables'));
+  if (algoIdx === -1) return "Erreur : L'algorithme doit commencer par le mot-clé 'Algorithme [Nom] ;'.";
+  if (!lines[algoIdx].includes(';')) return `Ligne ${algoIdx + 1} : Il manque un point-virgule ';' à la fin du nom de l'algorithme. Exemple: Algorithme Somme ;`;
+
   const debutIdx = lowerLines.findIndex(l => l === 'début' || l === 'debut');
   const finIdx = lowerLines.lastIndexOf('fin');
+  if (debutIdx === -1) return "Erreur : Le mot-clé 'Début' est manquant pour marquer le commencement des instructions.";
+  if (finIdx === -1) return "Erreur : Le mot-clé 'Fin' est manquant pour clore l'algorithme.";
+  if (debutIdx > finIdx) return "Erreur : Le mot-clé 'Début' doit se situer avant le mot-clé 'Fin'.";
 
-  if (algoIdx === -1) return "Erreur : L'algorithme doit commencer par 'Algorithme [Nom] ;'.";
-  if (!lines[algoIdx].includes(';')) return `Ligne ${algoIdx + 1} : Il manque un point-virgule ';' à la fin de la déclaration de l'algorithme.`;
-  
-  if (debutIdx === -1) return "Erreur : Le mot-clé 'Début' est obligatoire pour marquer le début des instructions.";
-  if (finIdx === -1) return "Erreur : Le mot-clé 'Fin' est obligatoire pour marquer la fin de l'algorithme.";
-  
-  if (varIdx !== -1 && varIdx > debutIdx) return "Erreur : La section 'Variables' doit impérativement se situer AVANT le bloc 'Début'.";
-  if (debutIdx > finIdx) return "Erreur : Le mot-clé 'Début' doit apparaître avant le mot-clé 'Fin'.";
+  // 2. Vérification des déclarations (Constantes et Variables)
+  for (let i = 0; i < debutIdx; i++) {
+    const line = lines[i].trim();
+    if (!line || lowerLines[i].startsWith('algorithme')) continue;
 
-  // 2. Vérification détaillée des variables
-  if (varIdx !== -1) {
-    for (let i = varIdx + 1; i < debutIdx; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      if (!line.includes(':')) return `Ligne ${i + 1} : Déclaration de variable incorrecte. Format attendu : 'Nom : Type'.`;
-      
-      const type = line.split(':').pop()?.trim().toLowerCase() || '';
-      if (!typesAutorises.some(t => type.includes(t))) {
-        return `Ligne ${i + 1} : Type '${type}' inconnu. Les types autorisés sont : entier, réel, chaîne de caractères, booléen.`;
+    const lowerLine = line.toLowerCase();
+    // On ne vérifie le point-virgule que pour les lignes effectives de déclaration, pas les entêtes de bloc
+    if (line.length > 0 && !['variables', 'constantes', 'début', 'debut'].includes(lowerLine)) {
+        if (!line.endsWith(';')) return `Ligne ${i + 1} : Chaque déclaration doit se terminer par un point-virgule ';'.`;
+    }
+
+    // Vérification des types pour les variables
+    if (line.includes(':')) {
+      const typePart = line.replace(/;$/, '').split(':').pop()?.trim().toLowerCase() || '';
+      if (!typesAutorises.some(t => typePart.includes(t))) {
+        return `Ligne ${i + 1} : Type '${typePart}' non reconnu. Utilisez: entier, réel, chaîne de caractères ou booléen.`;
       }
     }
   }
 
-  // 3. Analyse des instructions (Bloc Début...Fin)
+  // 3. Analyse du corps (Début...Fin)
   let siStack = 0;
   for (let i = debutIdx + 1; i < finIdx; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const lower = line.toLowerCase();
 
-    // Vérification de Si...Alors
+    // Structures conditionnelles
     if (lower.startsWith('si ')) {
       siStack++;
-      if (!lower.includes(' alors')) {
-        return `Ligne ${i + 1} : Syntaxe 'Si' incomplète. Il manque le mot-clé 'Alors' après la condition. Forme correcte : 'Si [condition] Alors'.`;
-      }
+      if (!lower.includes(' alors')) return `Ligne ${i + 1} : Il manque le mot-clé 'Alors'. La forme correcte est : Si [condition] Alors.`;
     }
-
     if (lower.replace(/\s/g, '').startsWith('finsi')) {
       siStack--;
-      if (siStack < 0) return `Ligne ${i + 1} : 'Fin si' détecté sans structure 'Si' ouverte correspondante.`;
+      if (siStack < 0) return `Ligne ${i + 1} : 'Fin si' sans 'Si' correspondant.`;
     }
+    if (lower === 'sinon' && siStack <= 0) return `Ligne ${i + 1} : 'Sinon' ne peut être utilisé qu'à l'intérieur d'un bloc 'Si'.`;
 
-    if (lower === 'sinon') {
-      if (siStack <= 0) return `Ligne ${i + 1} : 'Sinon' utilisé en dehors d'une structure 'Si'.`;
-    }
-
-    // Vérification Ecrire / Lire
+    // Ecrire / Lire
     if (lower.startsWith('ecrire')) {
-      if (!line.match(/Ecrire\s*\(.*\)/i)) {
-        return `Ligne ${i + 1} : Syntaxe 'Ecrire' incorrecte. Les parenthèses sont obligatoires. Exemple : Ecrire("Bonjour") ou Ecrire(A).`;
-      }
+      if (!line.includes('(') || !line.includes(')')) return `Ligne ${i + 1} : L'instruction 'Ecrire' nécessite des parenthèses. Exemple: Ecrire("Resultat", A).`;
     }
-
     if (lower.startsWith('lire')) {
       const match = line.match(/Lire\s*\((.*)\)/i);
-      if (!match) return `Ligne ${i + 1} : Syntaxe 'Lire' incorrecte. Exemple : Lire(Variable).`;
+      if (!match) return `Ligne ${i + 1} : Syntaxe de 'Lire' incorrecte. Exemple: Lire(A).`;
       const varNames = match[1].split(',').map(v => v.trim());
       for (const v of varNames) {
-        if (!declaredVars.has(v)) return `Ligne ${i + 1} : La variable '${v}' n'a pas été déclarée dans la section 'Variables'.`;
+        if (!symbols.has(v)) return `Ligne ${i + 1} : La variable '${v}' n'est pas déclarée. Toute variable doit être déclarée dans la section 'Variables'.`;
+        if (symbols.get(v)?.isConstant) return `Ligne ${i + 1} : Impossible de lire dans '${v}' car c'est une constante.`;
       }
     }
 
-    // Vérification Affectation
+    // Affectation
     if (line.includes('←') || line.includes('<-')) {
       const sep = line.includes('←') ? '←' : '<-';
       const varName = line.split(sep)[0].trim();
-      if (!declaredVars.has(varName)) return `Ligne ${i + 1} : La variable '${varName}' (affectation) n'est pas déclarée.`;
+      const symbol = symbols.get(varName);
+      if (!symbol) return `Ligne ${i + 1} : La variable '${varName}' n'est pas déclarée.`;
+      if (symbol.isConstant) return `Ligne ${i + 1} : Erreur fatale ! '${varName}' est une constante et ne peut pas être modifiée par une affectation.`;
     }
   }
 
-  if (siStack > 0) return "Erreur : Une structure 'Si' n'a pas été fermée. N'oubliez pas le 'Fin si'.";
+  if (siStack > 0) return "Erreur : Une structure 'Si' n'est pas fermée. Pensez à ajouter 'Fin si'.";
 
-  return null; // Tout est OK
+  return null;
 };

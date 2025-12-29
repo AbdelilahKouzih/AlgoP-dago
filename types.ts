@@ -5,6 +5,7 @@ export interface Variable {
   name: string;
   type: DataType;
   value: any;
+  isConstant: boolean;
 }
 
 export type InstructionType = 

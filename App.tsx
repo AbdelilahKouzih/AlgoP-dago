@@ -4,26 +4,31 @@ import { Play, RotateCcw, HelpCircle, Code2, AlertCircle, StepForward, Terminal 
 import CodeEditor from './components/CodeEditor';
 import Terminal from './components/Terminal';
 import VariableWatcher from './components/VariableWatcher';
-import { parseCode, parseVariables, validateSyntax } from './interpreter/parser';
+import { parseCode, parseAllDeclarations, validateSyntax } from './interpreter/parser';
 import { evaluateExpression, castValue } from './interpreter/evaluator';
 import { Instruction, ProgramState, ConsoleMessage, Variable, DataType } from './types';
 
 const INITIAL_CODE = `Algorithme Demo_Exécution ;
+Constantes
+   PI = 3.14 ;
+   APP_NAME = "AlgoPédago" ;
+
 Variables
-   Age : entier
-   Status : chaîne de caractères
+   Age : entier ;
+   Status : chaîne de caractères ;
+
 Début
+   Ecrire("Bienvenue sur ", APP_NAME)
    Ecrire("Quel est votre âge ?")
    Lire(Age)
    
    Si Age >= 18 Alors
       Status <- "Majeur"
-      Ecrire("Vous êtes ", Status)
    Sinon
       Status <- "Mineur"
-      Ecrire("Vous êtes ", Status)
    Fin si
    
+   Ecrire("Vous êtes : ", Status)
    Ecrire("Fin du programme.")
 Fin`;
 
@@ -66,49 +71,53 @@ const App: React.FC = () => {
   };
 
   const prepareExecution = () => {
-    // Nettoyage avant analyse
     resetProgram();
 
-    // 1. ANALYSE SYNTAXIQUE GLOBALE (FORCEE)
     const syntaxErrorMessage = validateSyntax(code);
-    
     if (syntaxErrorMessage) {
-      // Affichage pédagogique immédiat
       setState(prev => ({
         ...prev,
         console: [
-          { text: "⚠️ ERREUR DE SYNTAXE DÉTECTÉE", type: 'error', timestamp: new Date() },
+          { text: "🚨 ANALYSE SYNTAXIQUE : ÉCHEC", type: 'error', timestamp: new Date() },
           { text: syntaxErrorMessage, type: 'error', timestamp: new Date() },
-          { text: "Veuillez corriger le code avant de lancer l'exécution.", type: 'system', timestamp: new Date() }
+          { text: "Conseil : Vérifiez les mots-clés, les types et n'oubliez pas les ';' !", type: 'system', timestamp: new Date() }
         ]
       }));
-      return false; // BLOQUE LE LANCEMENT
+      return false;
     }
 
-    // 2. Si syntaxe OK, on parse les instructions et variables
     try {
       const parsedInstructions = parseCode(code);
-      const parsedVars = parseVariables(code);
-      const initialVars = new Map<string, Variable>();
+      const allDeclarations = parseAllDeclarations(code);
       
-      parsedVars.forEach((v, name) => {
-        let defaultValue: any = undefined;
-        if (v.type.includes('entier') || v.type.includes('réel')) defaultValue = 0;
-        if (v.type.includes('chaîne')) defaultValue = "";
-        if (v.type.includes('booléen')) defaultValue = false;
-
-        initialVars.set(name, { name, type: v.type as DataType, value: defaultValue });
+      // Initialisation des valeurs par défaut pour les variables
+      allDeclarations.forEach((v, name) => {
+        if (!v.isConstant) {
+            let defaultValue: any = undefined;
+            const t = v.type.toLowerCase();
+            if (t.includes('entier') || t.includes('réel')) defaultValue = 0;
+            else if (t.includes('chaîne') || t.includes('chaine')) defaultValue = "";
+            else if (t.includes('booléen')) defaultValue = false;
+            v.value = defaultValue;
+        } else {
+            // Pour les constantes, on évalue la valeur littérale
+            // Si c'est entre guillemets, on enlève les guillemets
+            if (typeof v.value === 'string') {
+                const s = v.value.trim();
+                if (s.startsWith('"') && s.endsWith('"')) v.value = s.slice(1, -1);
+            }
+        }
       });
 
       if (parsedInstructions.length === 0) {
-        addConsole("Aucune instruction d'exécution trouvée entre Début et Fin.", "error");
+        addConsole("Aucune instruction valide trouvée dans le corps de l'algorithme.", "error");
         return false;
       }
 
       setInstructions(parsedInstructions);
       setState({
-        variables: initialVars,
-        console: [{ text: "Syntaxe validée. Lancement de l'algorithme...", type: 'system', timestamp: new Date() }],
+        variables: allDeclarations,
+        console: [{ text: "Analyse terminée avec succès. Lancement de la machine...", type: 'system', timestamp: new Date() }],
         currentLine: parsedInstructions[0].lineNumber,
         instructionIndex: 0,
         isRunning: true,
@@ -118,7 +127,7 @@ const App: React.FC = () => {
       });
       return true;
     } catch (e: any) {
-      addConsole(`Erreur système lors du parsing : ${e.message}`, 'error');
+      addConsole(`Erreur interne : ${e.message}`, 'error');
       return false;
     }
   };
@@ -173,11 +182,11 @@ const App: React.FC = () => {
             const sep = instr.content.includes('←') ? '←' : '<-';
             const parts = instr.content.split(sep);
             const varName = parts[0].trim();
-            const target = prev.variables.get(varName);
-            if (!target) throw new Error(`Variable "${varName}" n'a pas été déclarée.`);
+            const symbol = prev.variables.get(varName);
+            if (!symbol) throw new Error(`Symbol '${varName}' non trouvé.`);
             const expr = parts.slice(1).join(sep).trim();
             const val = evaluateExpression(expr, prev.variables);
-            newVars.set(varName, { ...target, value: castValue(String(val), target.type) });
+            newVars.set(varName, { ...symbol, value: castValue(String(val), symbol.type) });
             break;
           }
 
@@ -191,15 +200,8 @@ const App: React.FC = () => {
                 for (let j = prev.instructionIndex + 1; j < instructions.length; j++) {
                   if (instructions[j].type === 'SI') depth++;
                   if (instructions[j].type === 'FIN_SI') depth--;
-                  
-                  if (depth === 1 && instructions[j].type === 'SINON') {
-                    nextIndex = j + 1;
-                    found = true; break;
-                  }
-                  if (depth === 0) {
-                    nextIndex = j + 1;
-                    found = true; break;
-                  }
+                  if (depth === 1 && instructions[j].type === 'SINON') { nextIndex = j + 1; found = true; break; }
+                  if (depth === 0) { nextIndex = j + 1; found = true; break; }
                 }
               }
             }
@@ -211,16 +213,13 @@ const App: React.FC = () => {
             for (let j = prev.instructionIndex + 1; j < instructions.length; j++) {
               if (instructions[j].type === 'SI') depth++;
               if (instructions[j].type === 'FIN_SI') depth--;
-              if (depth === 0) {
-                nextIndex = j + 1;
-                break;
-              }
+              if (depth === 0) { nextIndex = j + 1; break; }
             }
             break;
           }
         }
       } catch (e: any) {
-        newConsole.push({ text: `ERREUR D'EXÉCUTION LIGNE ${instr.lineNumber}: ${e.message}`, type: 'error', timestamp: new Date() });
+        newConsole.push({ text: `ERREUR : Ligne ${instr.lineNumber} - ${e.message}`, type: 'error', timestamp: new Date() });
         return { ...prev, console: newConsole, isRunning: false };
       }
 
@@ -277,7 +276,7 @@ const App: React.FC = () => {
       });
       setPromptValue('');
     } catch (e: any) {
-      addConsole(`Valeur incompatible pour '${state.inputTarget}' : ${e.message}`, 'error');
+      addConsole(`Erreur de type : ${e.message}`, 'error');
     }
   };
 
@@ -289,10 +288,10 @@ const App: React.FC = () => {
             <Code2 className="text-white w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">AlgoPédago - Analyseur</h1>
+            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">AlgoPédago - Tronc Commun</h1>
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Contrôle de Syntaxe Actif</span>
-              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Tronc Commun Maroc</span>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Vérification Avancée Active</span>
+              <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Maroc v1.7</span>
             </div>
           </div>
         </div>
@@ -304,17 +303,17 @@ const App: React.FC = () => {
             className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl font-bold transition-all shadow-md active:scale-95"
           >
             <Play className="w-4 h-4 fill-current" />
-            Exécuter l'Algo
+            Lancer l'Algorithme
           </button>
           <button 
             onClick={() => { if (!state.isRunning) prepareExecution(); else { isAutoStepRef.current = false; executeNextStep(); } }}
             className="flex items-center gap-2 px-6 py-2.5 bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 rounded-xl font-bold transition-all shadow-sm active:scale-95"
           >
             <StepForward className="w-4 h-4" />
-            Pas à Pas
+            Étape par Étape
           </button>
           <button onClick={resetProgram} className="px-6 py-2.5 bg-slate-100 text-slate-500 rounded-xl font-bold transition-all hover:bg-slate-200 active:scale-95 flex items-center gap-2">
-            <RotateCcw className="w-4 h-4" /> Réinitialiser
+            <RotateCcw className="w-4 h-4" /> Reset
           </button>
         </div>
       </header>
@@ -324,9 +323,8 @@ const App: React.FC = () => {
           <div className="flex items-center justify-between px-1">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <TerminalIcon className="w-3 h-3" />
-                Éditeur (Vérification Globale)
+                Editeur (Syntaxe Globale)
             </div>
-            {state.isRunning && <div className="text-[10px] font-bold text-indigo-500 animate-pulse">EXÉCUTION EN COURS...</div>}
           </div>
           <CodeEditor value={code} onChange={setCode} currentLine={state.currentLine} />
         </section>
@@ -338,7 +336,7 @@ const App: React.FC = () => {
               <div className="absolute inset-x-4 bottom-4 p-5 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-300 z-30">
                 <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <h3 className="text-white text-xs font-bold uppercase tracking-tighter">Entrée clavier attendue : <span className="text-indigo-400 font-mono">{state.inputTarget}</span></h3>
+                    <h3 className="text-white text-xs font-bold uppercase tracking-tighter">Saisie pour : <span className="text-indigo-400 font-mono">{state.inputTarget}</span></h3>
                 </div>
                 <form onSubmit={handleInputSubmit} className="flex gap-2">
                   <input autoFocus type="text" value={promptValue} onChange={(e) => setPromptValue(e.target.value)} className="flex-1 bg-slate-800 border border-slate-600 text-emerald-400 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 font-mono" placeholder="Entrez la valeur..." />
@@ -358,14 +356,14 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${state.isRunning ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-300'}`}></div>
             <span className={state.isRunning ? 'text-emerald-600' : 'text-slate-400'}>
-              {state.isRunning ? 'Moteur Actif' : 'Prêt pour Analyse'}
+              {state.isRunning ? 'Exécution en cours' : 'Analyseur prêt'}
             </span>
           </div>
-          {state.currentLine > 0 && <div className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 flex items-center gap-1">Instruction courante : Ligne {state.currentLine}</div>}
+          {state.currentLine > 0 && <div className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">Ligne active : {state.currentLine}</div>}
         </div>
-        <div className="flex items-center gap-2">
-          <AlertCircle className="w-3 h-3" />
-          AlgoPédago v1.6 • Tronc Commun Maroc
+        <div className="flex items-center gap-2 italic">
+          <AlertCircle className="w-3 h-3 text-indigo-400" />
+          Conforme au programme scolaire marocain (Module 3)
         </div>
       </footer>
     </div>
