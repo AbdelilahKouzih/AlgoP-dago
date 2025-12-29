@@ -66,26 +66,28 @@ const App: React.FC = () => {
   };
 
   const prepareExecution = () => {
-    // 1. On commence par réinitialiser proprement
+    // Nettoyage avant analyse
     resetProgram();
 
-    try {
-      // 2. Analyse du code
-      const parsedInstructions = parseCode(code);
-      
-      // 3. Validation STRICTE de la syntaxe
-      const syntaxError = validateSyntax(code, parsedInstructions);
-      
-      if (syntaxError) {
-        // AFFICHAGE IMMEDIAT DE L'ERREUR DANS LA CONSOLE
-        setState(prev => ({
-          ...prev,
-          console: [{ text: "--- ERREUR DE SYNTAXE ---", type: 'error', timestamp: new Date() }, { text: syntaxError, type: 'error', timestamp: new Date() }]
-        }));
-        return false; // BLOQUE L'EXECUTION
-      }
+    // 1. ANALYSE SYNTAXIQUE GLOBALE (FORCEE)
+    const syntaxErrorMessage = validateSyntax(code);
+    
+    if (syntaxErrorMessage) {
+      // Affichage pédagogique immédiat
+      setState(prev => ({
+        ...prev,
+        console: [
+          { text: "⚠️ ERREUR DE SYNTAXE DÉTECTÉE", type: 'error', timestamp: new Date() },
+          { text: syntaxErrorMessage, type: 'error', timestamp: new Date() },
+          { text: "Veuillez corriger le code avant de lancer l'exécution.", type: 'system', timestamp: new Date() }
+        ]
+      }));
+      return false; // BLOQUE LE LANCEMENT
+    }
 
-      // 4. Initialisation des variables si syntaxe OK
+    // 2. Si syntaxe OK, on parse les instructions et variables
+    try {
+      const parsedInstructions = parseCode(code);
       const parsedVars = parseVariables(code);
       const initialVars = new Map<string, Variable>();
       
@@ -98,10 +100,15 @@ const App: React.FC = () => {
         initialVars.set(name, { name, type: v.type as DataType, value: defaultValue });
       });
 
+      if (parsedInstructions.length === 0) {
+        addConsole("Aucune instruction d'exécution trouvée entre Début et Fin.", "error");
+        return false;
+      }
+
       setInstructions(parsedInstructions);
       setState({
         variables: initialVars,
-        console: [{ text: "Vérification terminée : Aucune erreur syntaxique.", type: 'system', timestamp: new Date() }],
+        console: [{ text: "Syntaxe validée. Lancement de l'algorithme...", type: 'system', timestamp: new Date() }],
         currentLine: parsedInstructions[0].lineNumber,
         instructionIndex: 0,
         isRunning: true,
@@ -111,7 +118,7 @@ const App: React.FC = () => {
       });
       return true;
     } catch (e: any) {
-      addConsole(`Erreur critique système : ${e.message}`, 'error');
+      addConsole(`Erreur système lors du parsing : ${e.message}`, 'error');
       return false;
     }
   };
@@ -194,7 +201,6 @@ const App: React.FC = () => {
                     found = true; break;
                   }
                 }
-                if (!found) throw new Error("Structure 'Si' mal formée.");
               }
             }
             break;
@@ -202,27 +208,24 @@ const App: React.FC = () => {
 
           case 'SINON': {
             let depth = 1;
-            let found = false;
             for (let j = prev.instructionIndex + 1; j < instructions.length; j++) {
               if (instructions[j].type === 'SI') depth++;
               if (instructions[j].type === 'FIN_SI') depth--;
               if (depth === 0) {
                 nextIndex = j + 1;
-                found = true; break;
+                break;
               }
             }
-            if (!found) throw new Error("'Sinon' sans 'Fin si'.");
             break;
           }
         }
       } catch (e: any) {
-        newConsole.push({ text: `ERREUR EXECUTION LIGNE ${instr.lineNumber}: ${e.message}`, type: 'error', timestamp: new Date() });
+        newConsole.push({ text: `ERREUR D'EXÉCUTION LIGNE ${instr.lineNumber}: ${e.message}`, type: 'error', timestamp: new Date() });
         return { ...prev, console: newConsole, isRunning: false };
       }
 
-      const isFinished = nextIndex >= instructions.length && !nextIsPaused;
-      if (isFinished) {
-          newConsole.push({ text: "Exécution terminée avec succès.", type: 'system', timestamp: new Date() });
+      if (nextIndex >= instructions.length && !nextIsPaused) {
+          newConsole.push({ text: "Algorithme terminé avec succès.", type: 'system', timestamp: new Date() });
       }
 
       return {
@@ -274,21 +277,21 @@ const App: React.FC = () => {
       });
       setPromptValue('');
     } catch (e: any) {
-      addConsole(`Type incorrect pour '${state.inputTarget}' (${targetVar.type}): ${e.message}`, 'error');
+      addConsole(`Valeur incompatible pour '${state.inputTarget}' : ${e.message}`, 'error');
     }
   };
 
   return (
     <div className="min-h-screen flex flex-col max-h-screen bg-slate-50">
-      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-30">
+      <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-40">
         <div className="flex items-center gap-4">
           <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-100">
             <Code2 className="text-white w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight tracking-tight">Vérificateur AlgoPédago</h1>
+            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">AlgoPédago - Analyseur</h1>
             <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Logiciel de Contrôle</span>
+              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Contrôle de Syntaxe Actif</span>
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Tronc Commun Maroc</span>
             </div>
           </div>
@@ -301,7 +304,7 @@ const App: React.FC = () => {
             className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white rounded-xl font-bold transition-all shadow-md active:scale-95"
           >
             <Play className="w-4 h-4 fill-current" />
-            Lancer l'algorithme
+            Exécuter l'Algo
           </button>
           <button 
             onClick={() => { if (!state.isRunning) prepareExecution(); else { isAutoStepRef.current = false; executeNextStep(); } }}
@@ -321,8 +324,9 @@ const App: React.FC = () => {
           <div className="flex items-center justify-between px-1">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
                 <TerminalIcon className="w-3 h-3" />
-                Éditeur de code (Analyse Syntaxique en Temps Réel)
+                Éditeur (Vérification Globale)
             </div>
+            {state.isRunning && <div className="text-[10px] font-bold text-indigo-500 animate-pulse">EXÉCUTION EN COURS...</div>}
           </div>
           <CodeEditor value={code} onChange={setCode} currentLine={state.currentLine} />
         </section>
@@ -334,10 +338,10 @@ const App: React.FC = () => {
               <div className="absolute inset-x-4 bottom-4 p-5 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl animate-in fade-in zoom-in duration-300 z-30">
                 <div className="flex items-center gap-2 mb-3">
                     <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <h3 className="text-white text-xs font-bold uppercase tracking-tighter">Entrée attendue : <span className="text-indigo-400 font-mono">{state.inputTarget}</span></h3>
+                    <h3 className="text-white text-xs font-bold uppercase tracking-tighter">Entrée clavier attendue : <span className="text-indigo-400 font-mono">{state.inputTarget}</span></h3>
                 </div>
                 <form onSubmit={handleInputSubmit} className="flex gap-2">
-                  <input autoFocus type="text" value={promptValue} onChange={(e) => setPromptValue(e.target.value)} className="flex-1 bg-slate-800 border border-slate-600 text-emerald-400 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 font-mono" placeholder="Saisissez la valeur..." />
+                  <input autoFocus type="text" value={promptValue} onChange={(e) => setPromptValue(e.target.value)} className="flex-1 bg-slate-800 border border-slate-600 text-emerald-400 rounded-lg px-4 py-2.5 text-sm outline-none focus:border-indigo-500 font-mono" placeholder="Entrez la valeur..." />
                   <button type="submit" className="bg-indigo-600 text-white px-6 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-500/20">Valider</button>
                 </form>
               </div>
@@ -354,14 +358,14 @@ const App: React.FC = () => {
           <div className="flex items-center gap-2">
             <div className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${state.isRunning ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-300'}`}></div>
             <span className={state.isRunning ? 'text-emerald-600' : 'text-slate-400'}>
-              {state.isRunning ? 'Machine en cours' : 'Prêt pour l\'analyse'}
+              {state.isRunning ? 'Moteur Actif' : 'Prêt pour Analyse'}
             </span>
           </div>
-          {state.currentLine > 0 && <div className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">Exécution : Ligne {state.currentLine}</div>}
+          {state.currentLine > 0 && <div className="text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100 flex items-center gap-1">Instruction courante : Ligne {state.currentLine}</div>}
         </div>
         <div className="flex items-center gap-2">
           <AlertCircle className="w-3 h-3" />
-          Vérificateur V1.5 • Tron commun Maroc
+          AlgoPédago v1.6 • Tronc Commun Maroc
         </div>
       </footer>
     </div>
