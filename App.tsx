@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Play, RotateCcw, HelpCircle, Code2, AlertCircle, StepForward, Terminal as TerminalIcon } from 'lucide-react';
 import CodeEditor from './components/CodeEditor';
@@ -156,9 +155,10 @@ const App: React.FC = () => {
               const content = match[1];
               const parts = content.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
               const output = parts.map(part => {
-                const trimmed = part.trim();
-                if (trimmed.startsWith('"') && trimmed.endsWith('"')) return trimmed.slice(1, -1);
-                return String(evaluateExpression(trimmed, prev.variables));
+                // Fixed: Removed incorrect 'part.part' access. part is a string.
+                const partTrimmed = part.trim();
+                if (partTrimmed.startsWith('"') && partTrimmed.endsWith('"')) return partTrimmed.slice(1, -1);
+                return String(evaluateExpression(partTrimmed, prev.variables));
               }).join('');
               newConsole.push({ text: output, type: 'output', timestamp: new Date() });
             }
@@ -286,7 +286,7 @@ const App: React.FC = () => {
             <Code2 className="text-white w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">AlgoPédago - Maroc</h1>
+            <h1 className="text-xl font-extrabold text-slate-800 tracking-tight">AbdoBox</h1>
             <div className="flex items-center gap-2">
               <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded uppercase">Analyseur Scolaire</span>
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Tronc Commun v2.0</span>
@@ -361,7 +361,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <AlertCircle className="w-3 h-3 text-indigo-400" />
-          Conforme Module 3 - Tron Commun
+          AbdoBox - Module 3 - Tronc Commun
         </div>
       </footer>
     </div>
