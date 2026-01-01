@@ -4,6 +4,7 @@ import { Play, RotateCcw, Code2, AlertCircle, StepForward, Terminal as TerminalI
 import CodeEditor from './components/CodeEditor';
 import Terminal from './components/Terminal';
 import VariableWatcher from './components/VariableWatcher';
+import Logo from './components/Logo';
 import { parseCode, parseAllDeclarations, validateSyntax } from './interpreter/parser';
 import { evaluateExpression, castValue } from './interpreter/evaluator';
 import { Instruction, ProgramState, ConsoleMessage, Variable, DataType } from './types';
@@ -331,11 +332,9 @@ const App: React.FC = () => {
     <div className="min-h-screen flex flex-col max-h-screen bg-slate-50 overflow-hidden font-sans selection:bg-indigo-100 selection:text-indigo-900">
       <header className="bg-white border-b-2 border-slate-200 px-4 py-4 lg:px-8 lg:py-6 flex flex-col md:flex-row items-center justify-between shrink-0 shadow-sm z-40 gap-4">
         <div className="flex items-center gap-4 w-full md:w-auto">
-          <div className="bg-indigo-600 p-3 rounded-2xl shadow-xl shadow-indigo-100 shrink-0">
-            <Code2 className="text-white w-6 h-6 lg:w-8 lg:h-8" />
-          </div>
+          <Logo className="w-12 h-12 lg:w-16 lg:h-16" />
           <div className="flex-1 min-w-0">
-            <h1 className="text-xl lg:text-3xl font-black text-slate-800 tracking-tight leading-none mb-1 lg:mb-2">AbdoBox</h1>
+            <h1 className="text-xl lg:text-3xl font-black text-slate-800 tracking-tight leading-none mb-1 lg:mb-2">LearnAlgo</h1>
             <div className="flex items-center gap-2">
               <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] lg:text-xs font-black rounded-lg uppercase border border-emerald-200">Pédagogie TC</span>
               <div className="relative">
@@ -453,7 +452,7 @@ const App: React.FC = () => {
         </div>
         <div className="flex items-center gap-3 shrink-0 ml-4 opacity-70">
           <AlertCircle className="w-4 h-4 text-indigo-300" />
-          <span className="hidden sm:inline">AbdoBox Tronc Commun V2.5</span>
+          <span className="hidden sm:inline">LearnAlgo Tronc Commun V2.5</span>
         </div>
       </footer>
     </div>
