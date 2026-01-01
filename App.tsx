@@ -100,8 +100,8 @@ const App: React.FC = () => {
 
   const clearEditor = useCallback(() => {
     if (window.confirm("Voulez-vous vraiment effacer tout le code ?")) {
-      setCode("");
-      resetProgram();
+      setCode(""); 
+      resetProgram(); 
     }
   }, [resetProgram]);
 
