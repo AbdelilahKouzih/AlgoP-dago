@@ -1,22 +1,31 @@
+
 {
   "name": "learnalgo",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
+  "version": "1.0.0",
+  "description": "Apprentissage interactif de l'algorithmique",
+  "main": "main.js",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "electron .",
+    "dist": "electron-builder"
   },
-  "dependencies": {
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "lucide-react": "^0.562.0"
-  },
+  "author": "LearnAlgo Team",
+  "license": "MIT",
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "electron": "^31.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.learnalgo.app",
+    "productName": "LearnAlgo",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "portable",
+      "icon": "logo.png"
+    },
+    "mac": {
+      "category": "public.app-category.education"
+    }
   }
 }

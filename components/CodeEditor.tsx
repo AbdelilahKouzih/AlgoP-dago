@@ -27,10 +27,11 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, currentLine })
 
   /**
    * Moteur de coloration "Single Pass" par tokens
-   * Cette méthode évite que les regex ne s'appliquent sur les classes CSS déjà injectées.
    */
   const highlightCode = (code: string) => {
-    if (!code) return "";
+    // BUG FIX ELECTRON: Si le code est vide, on renvoie un espace insécable 
+    // pour éviter que le composant <pre> ne s'effondre et ne bloque le hit-testing.
+    if (!code || code.trim() === "") return "\u00A0";
 
     // 1. Échappement HTML initial
     let escaped = code
@@ -38,7 +39,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, currentLine })
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
 
-    // 2. Définition des patterns (Ordre important : les plus spécifiques d'abord)
+    // 2. Définition des patterns
     const tokens: { pattern: RegExp; css: string }[] = [
       { pattern: /(\/\/.*$)/gm, css: 'text-slate-400 italic opacity-70' }, // Commentaires
       { pattern: /("[^"]*")/g, css: 'text-amber-600 font-bold' }, // Chaînes
@@ -54,14 +55,11 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, currentLine })
       { pattern: /\b(\d+)\b/g, css: 'text-orange-500' } // Nombres
     ];
 
-    // Stratégie : On cherche tous les matches possibles, on les trie par position,
-    // et on reconstruit la chaîne avec les balises SPAN.
     type Match = { index: number; length: number; css: string; text: string };
     const matches: Match[] = [];
 
     tokens.forEach(({ pattern, css }) => {
       let m;
-      // Réinitialiser l'index pour les regex globales
       pattern.lastIndex = 0;
       while ((m = pattern.exec(escaped)) !== null) {
         matches.push({
@@ -73,14 +71,12 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, currentLine })
       }
     });
 
-    // Trier par position et longueur (priorité aux plus longs en cas de collision)
     matches.sort((a, b) => a.index - b.index || b.length - a.length);
 
-    // Reconstruire sans chevauchement
     let result = "";
     let lastIndex = 0;
     for (const match of matches) {
-      if (match.index < lastIndex) continue; // Skip overlaps
+      if (match.index < lastIndex) continue; 
       
       result += escaped.substring(lastIndex, match.index);
       result += `<span class="${match.css}">${match.text}</span>`;
@@ -109,8 +105,16 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, currentLine })
     boxSizing: 'border-box'
   };
 
+  // Force le focus sur le textarea lors d'un clic sur le conteneur
+  const focusEditor = () => {
+    textareaRef.current?.focus();
+  };
+
   return (
-    <div className="relative flex flex-1 h-full bg-white border-2 border-slate-200 rounded-2xl shadow-sm overflow-hidden min-h-0 group">
+    <div 
+      className="relative flex flex-1 h-full bg-white border-2 border-slate-200 rounded-2xl shadow-sm overflow-hidden min-h-0 group cursor-text"
+      onClick={focusEditor}
+    >
       
       {/* Sidebar Numéros de Ligne */}
       <div 
@@ -133,13 +137,16 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, currentLine })
       </div>
       
       {/* Zone d'édition et rendu */}
-      <div className="relative flex-1 h-full overflow-hidden bg-white">
+      <div className="relative flex-1 h-full overflow-hidden bg-white selection-allowed">
         {/* Rendu Coloré (Arrière-plan) */}
         <pre
           ref={preRef}
           aria-hidden="true"
-          style={sharedStyles}
-          className="absolute inset-0 m-0 pointer-events-none overflow-hidden select-none text-slate-700 bg-transparent z-0"
+          style={{
+            ...sharedStyles,
+            zIndex: 1
+          }}
+          className="absolute inset-0 m-0 pointer-events-none overflow-hidden select-none text-slate-700 bg-transparent"
           dangerouslySetInnerHTML={{ __html: highlightCode(value) + "\n" }}
         />
         
@@ -156,10 +163,17 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, currentLine })
           style={{
             ...sharedStyles,
             color: 'transparent',
-            caretColor: '#1e293b', // Slate 900
+            caretColor: '#1e293b',
             background: 'transparent',
+            zIndex: 10,
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: '100%',
+            userSelect: 'text' // Sécurité additionnelle pour Electron
           }}
-          className="absolute inset-0 w-full h-full resize-none outline-none focus:ring-0 z-10 overflow-auto scroll-smooth"
+          className="resize-none outline-none focus:ring-0 overflow-auto scroll-smooth"
           placeholder="Saisissez votre algorithme ici..."
         />
       </div>
@@ -167,7 +181,7 @@ const CodeEditor: React.FC<CodeEditorProps> = ({ value, onChange, currentLine })
       {/* Étiquette d'état */}
       <div className="absolute top-3 right-5 pointer-events-none opacity-40 group-hover:opacity-100 transition-opacity text-[9px] font-black text-slate-400 uppercase tracking-widest z-20 flex items-center gap-2 bg-white/80 px-2 py-1 rounded-full backdrop-blur-sm shadow-sm border border-slate-100">
         <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div>
-        Source Brut
+        Editeur Actif
       </div>
     </div>
   );

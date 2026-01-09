@@ -27,7 +27,7 @@ const Terminal: React.FC<TerminalProps> = ({ messages }) => {
           <div className="w-2 h-2 lg:w-2.5 lg:h-2.5 rounded-full bg-emerald-500/50"></div>
         </div>
       </div>
-      <div className="flex-1 p-4 lg:p-6 overflow-auto font-mono text-sm lg:text-base leading-relaxed scroll-smooth bg-gradient-to-b from-slate-900 to-slate-950">
+      <div className="flex-1 p-4 lg:p-6 overflow-auto font-mono text-sm lg:text-base leading-relaxed scroll-smooth bg-gradient-to-b from-slate-900 to-slate-950 selection-allowed">
         {messages.length === 0 && (
           <div className="text-slate-600 italic animate-pulse">En attente d'exécution...</div>
         )}
